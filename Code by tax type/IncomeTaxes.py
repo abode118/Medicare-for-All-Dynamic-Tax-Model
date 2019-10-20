@@ -147,7 +147,7 @@ Inputs:
 Output: a list of income tax revenue for each year from StartYear to StartYear + Years
 """
 
-def ProjectIncomeTax(IncomeTaxFile,BracketFile,StandardDeduction,BaseYear,
+def ProjectIncomeTax(IncomeTaxFile,BracketFile,StandardDeduction,IncomeGroups,BaseYear,
                      StartYear,Years,Inflation,PopulationGrowth):
 
     brackets = CreateBracketDict(BracketFile)
@@ -155,7 +155,7 @@ def ProjectIncomeTax(IncomeTaxFile,BracketFile,StandardDeduction,BaseYear,
     
     #take income tax dictionary and provide a distribution (number of people
     #per income dollar increment) for each income group
-    incomedistribution = m.createfulldistribution(DictIncomeTax,BaseYear)
+    incomedistribution = m.createfulldistribution(DictIncomeTax,BaseYear,IncomeGroups)
     
     #create a copy of StandardDeduction so that you can adjust thresholds for inflation
     StandDeduc = copy.deepcopy(StandardDeduction)
