@@ -1,4 +1,3 @@
-#Essential variables/functions for Medicare for All Project
 """
 Created on Sat Sep 21 10:29:00 2019
 
@@ -6,7 +5,9 @@ Created on Sat Sep 21 10:29:00 2019
 """
 
 """
-Initiate Variables
+******************************************************************************
+VARIABLES NEEDED FOR TAX REVENUE PROJECTIONS
+******************************************************************************
 """
 
 TotalCost = 30000000000000
@@ -14,9 +15,9 @@ TotalYears = 10
 DesiredCoverage = 0.50
 
 #growth rate assumptions
-Inflation = 0.018
-PopulationGrowth = 0.007
-GDPGrowth = 0.015
+Inflation = 0.02
+PopulationGrowth = 0.008
+GDPGrowth = 0.02
 
 #current rates
 CurrentCorpTaxRate = 0.21
@@ -53,13 +54,24 @@ IncomeGroups ={
         '$5,000,000 under $10,000,000':[5000000,10000000],
         '$10,000,000 or more':[10000000,10000000]}
 
-Brackets2019Data = "C:\Python Data Files\Brackets2019.csv"
-Brackets2017Data = "C:\Python Data Files\Brackets2017.csv"
-FedRevData = "C:\Python Data Files\Federal Revenue.csv"
-IncomeTaxData = "C:\Python Data Files\Income Taxes.csv"
-PayrollTaxData = "C:\Python Data Files\Payroll Taxes.csv"
+Brackets2019Data = "Brackets2019.csv"
+Brackets2017Data = "Brackets2017.csv"
+FedRevData = "Federal Revenue.csv"
+IncomeTaxData = "Income Taxes.csv"
+PayrollTaxData = "Payroll Taxes.csv"
+
+
 
 """
+******************************************************************************
+HELPER FUNCTIONS NEEDED IN MULTIPLE TAX PROJECTIONS
+******************************************************************************
+"""
+
+"""
+******************************************************************************
+CREATEDISTRIBUTION()
+
 Function: get distribution of people within each IncomeGroup at $1 increment
 
 Inputs:
@@ -68,8 +80,8 @@ Inputs:
     totalnumber, an int
 
 Outputs: list of [minincome, maxincome, total number of ppl, number of ppl per $1]
+******************************************************************************
 """
-
 def createdistribution(minincome,maxincome,totalnumber):
     if maxincome == minincome:
         numperdollar = totalnumber
@@ -80,6 +92,9 @@ def createdistribution(minincome,maxincome,totalnumber):
             numperdollar]
 
 """
+******************************************************************************
+CREATEFULLDISTRIBUTION()
+
 Function: produce distribution of people at $1 increment for each line
 (filing status, year, income group) in a given Income Tax Dictionary
 
@@ -93,8 +108,8 @@ Output: list of lists [status,
                        avgAGI,
                       [minincome, maxincome, total number of ppl, number of ppl per $1],
                       totalAGI]
+******************************************************************************
 """
-
 def createfulldistribution(DictIncomeTax,Year,IncomeGroups):
     fulldistro = []
     yr = str(Year)
@@ -112,6 +127,9 @@ def createfulldistribution(DictIncomeTax,Year,IncomeGroups):
     return fulldistro
 
 """
+******************************************************************************
+FINDAVERAGES()
+
 Function: given a starting average, threshold, and distribution (number of ppl
 per $1 increment), calculate two new averages on either side of threshold
 
@@ -123,8 +141,8 @@ Inputs:
     threshold, an int
 
 Output: list of lists, [[new low avg and # of ppl],[new high avg and # of ppl]]
+******************************************************************************
 """
-
 def find_averages(startavg,low,high,personperdoll,threshold):
     
     #calculate number of people in each side of threshold
@@ -141,6 +159,9 @@ def find_averages(startavg,low,high,personperdoll,threshold):
     return [[newlowavg,lowdenom], [newhighavg,highdenom]]
 
 """
+******************************************************************************
+ISITCOVERED()
+
 Function: do your tax rate changes cover the desired % of the total cost?
 
 Inputs:
@@ -149,6 +170,7 @@ Inputs:
     coveredamount, a float
 
 Output: Boolean
+******************************************************************************
 """
 def isitcovered(desiredcoverage,totalamount,coveredamount):
     if desiredcoverage * totalamount < coveredamount:
