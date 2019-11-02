@@ -1,4 +1,3 @@
-#Payroll Tax functions for Medicare for All Project
 """
 Created on Sat Sep 21 10:40:13 2019
 
@@ -11,141 +10,16 @@ import copy
 import MFAvariables as m
 import IncomeTaxes as i
 
-
 """
-2019 Payroll Tax Info: [OASDI rate, OASDI cap, HI rate, addt'l HI rate, threshold dictionary]
-"""
-PayrollTaxin19 = [0.124,132900, 0.029,0.009,
-                  {'Single': 200000,
-                   'Married filed jointly + Surviving Spouses':250000,
-                   'Married filed separately': 125000,
-                   'HoH':200000}]
-
-"""
-Function: create a dictionary of payroll tax data
-
-Inputs: PayrollFile, a csv file
-
-Output: dictionary, format below
-{year:
-    cap,
-    OASDItax rate,
-    OASDI collected
-    HI tax rate,
-    addt'l HI tax rate,
-    Upper HI Threshold (Indiv),
-    Upper HI Threshold (Married Joint),
-    Upper HI Threshold (Married Separate),
-    HI collected}
+******************************************************************************
+FUNCTIONS NEEDED TO PROJECT PAYROLL TAX REVENUE
+******************************************************************************
 """
 
-def CreatePayrollTaxDict(PayrollFile):
-    with open(PayrollFile) as f:
-        PayrollTaxList = list(list(yr) for yr in csv.reader(f, delimiter=','))
-        f.close()
-    DictPayrollTax = {}
-    for yr in PayrollTaxList[1:]:
-        for r in range(1,12):
-            if '0.' in yr[r]:
-                yr[r] = int(yr[r].replace('0.',''))/10000
-                #convert rates to percents
-            else:
-                yr[r] = int(yr[r])
-        DictPayrollTax[str(yr[0])] = [yr[1],yr[2],yr[10],yr[3],yr[7],
-                       yr[4],yr[5],yr[6],yr[11]]
-    return DictPayrollTax
-
 """
-Function: create new payroll list, preserving current OASDI rate
+******************************************************************************
+PROJECTPAYROLLTAX()
 
-Inputs:
-    oldpayrolllist, a list
-    newHIrates, a list (new HI and addtl HI rate)
-    
-Output: list, updated for new HI rates
-[OASDI rate, OASDI cap, HI rate, addt'l HI rate, threshold dictionary]   
-"""
-
-def newpayrolllist(oldpayrolllist,newHIrates):
-    newlist = copy.deepcopy(oldpayrolllist)
-    newlist[2] = newHIrates[0]
-    newlist[3] = newHIrates[1]
-    return newlist
-
-"""
-Function: Calculating % of income in diff filing statuses, to be used to 
-project Payroll Tax revenue changes
-
-Inputs:
-    incomedistribution, a list of lists
-    FilingStatus, a dictionary
-    
-Output: dictionary, format below
-{Filing Status:
-    [revenue from status,
-    % of total revenue from status]}
-"""
-
-def statusdistribution(incomedistribution,FilingStatus):
-    #initiate a dictionary which will resemble {Status: rev from status}, and
-    #initiate a rev from each status of 0
-    statusdistro = {}
-    totrev = 0
-    for status in FilingStatus:
-        statusdistro[status] = 0
-        
-    for line in incomedistribution:
-        if line[0] in FilingStatus: 
-            #weed out the "Total" etc lines, to avoid duplication
-            status = str(line[0])
-            statusdistro[status] = statusdistro[status] + line[4]
-            totrev += line[4]
-            #add total AGI from this line to the current rev from status
-    for st in statusdistro:
-        statusdistro[st] = [statusdistro[st],statusdistro[st]/totrev]
-        #when complete, switch dictionary to resemble {Status: [rev from status,
-        #% of total rev from status]}
-    return statusdistro  
-
-"""
-Function: project payroll tax revenue, with no changes
-
-Inputs:
-    PayrollTaxFile, a csv file
-    BaseYear, an int
-    StartYear, an int (> 2019)
-    Years, an int
-    Inflation, a float
-    PopulationGrowth, a float
-    
-Output: list of lists (array) of [OASDI revenue, HI revenue] for each year
-"""    
-
-def ProjectPayrollTaxSimple(PayrollTaxFile,BaseYear,StartYear,Years,Inflation,
-                      PopulationGrowth):
-
-    #create payroll tax dictionary and pull out the OASDI and HI rev in base year
-    DictPayrollTax = CreatePayrollTaxDict(PayrollTaxFile)
-    OASDItaxrev = DictPayrollTax[str(BaseYear)][2]
-    HItaxrev = DictPayrollTax[str(BaseYear)][8]
-    
-    #update from base year to start year, using inflation and population growth
-    for y in range(StartYear-BaseYear):
-        OASDItaxrev = OASDItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-        HItaxrev = HItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-            
-    PayrollTaxRevSimple = []
-    for j in range(Years):       
-        PayrollTaxRevSimple.append([OASDItaxrev,HItaxrev])
-        #update for inflation and population growth    
-        OASDItaxrev = OASDItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-        HItaxrev = HItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-    
-    PayrollTaxRevSimple = numpy.array(PayrollTaxRevSimple)
-    
-    return PayrollTaxRevSimple
-
-"""
 Function: Projecting payroll taxes; with rate change(s)
 
 Inputs:
@@ -154,21 +28,25 @@ Inputs:
     CurrentPayrollTaxList, a list
     NewPayrollTaxList, a list
     FilingStatus, a dictionary
+    IncomeGroups, a dictionary
     BaseYear, an int (2000 - 2016; historical data available for income groups)
     StartYear, an int (>2019)
     Years, an int
     Inflation, a float
     PopulationGrowth, a float
 
-Output: list of lists (array) of [OASDI revenue, HI revenue] for each year
+Output: list of lists (array)
+        [OASDI revenue,Base HI tax rev,Addtl HI tax rev]
+        for each year
+******************************************************************************
 """
 
-def ProjectPayrollTaxHI(IncomeTaxFile,PayrollTaxFile,CurrentPayrollTaxList,
-                      NewPayrollTaxList,FilingStatus,BaseYear,StartYear,Years,
-                      Inflation,PopulationGrowth):
-
+def ProjectPayrollTax(IncomeTaxFile,PayrollTaxFile,CurrentPayrollTaxList,
+                      NewPayrollTaxList,FilingStatus,IncomeGroups,BaseYear,
+                      StartYear,Years,Inflation,PopulationGrowth):
+    
     DictIncomeTax = i.CreateIncomeTaxDict(IncomeTaxFile)
-    incomedistribution = m.createfulldistribution(DictIncomeTax,BaseYear)
+    incomedistribution = m.createfulldistribution(DictIncomeTax,BaseYear,IncomeGroups)
     statdistribution = statusdistribution(incomedistribution,FilingStatus)
     DictPayrollTax = CreatePayrollTaxDict(PayrollTaxFile)
     NewHIThresholdDict = NewPayrollTaxList[4]
@@ -241,39 +119,158 @@ def ProjectPayrollTaxHI(IncomeTaxFile,PayrollTaxFile,CurrentPayrollTaxList,
     for status in abovebelow:
         abovethresholdpct += abovebelow[status][1][1] * abovebelow[status][2][1]
     HItotrev = HItaxrev/(CurrentPayrollTaxList[2]+(CurrentPayrollTaxList[3]*abovethresholdpct))
+    AddtlHIrev = HItotrev * (CurrentPayrollTaxList[3]*abovethresholdpct)
+    BaseHIrev = HItotrev * CurrentPayrollTaxList[2] 
    
     #update revenue from base year to start year, using inflation and population growth
     for y in range(StartYear-BaseYear):
         OASDItaxrev = OASDItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-        HItaxrev = HItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
+        AddtlHIrev = AddtlHIrev * (1 + PopulationGrowth) * (1 + Inflation)
+        BaseHIrev = BaseHIrev * (1 + PopulationGrowth) * (1 + Inflation)
         HItotrev = HItotrev * (1 + PopulationGrowth) * (1 + Inflation)
     
     #if HI rate changed, multiply the change by the total rev and adjust
     if NewPayrollTaxList[2] != CurrentPayrollTaxList[2]:
-        HItaxrev += (NewPayrollTaxList[2] - CurrentPayrollTaxList[2]) * HItotrev
+        BaseHIrev += (NewPayrollTaxList[2] - CurrentPayrollTaxList[2]) * HItotrev
         
     #if addt'l HI rate changed, multiply the change * the % of income
     #above the threshold (for applicable filing status) * total rev and adjust
     if NewPayrollTaxList[3] != CurrentPayrollTaxList[3]:
         abovethresholdpct = 0
         for l in abovebelow:
-            abovethresholdpct += abovebelow[i][1][1] * abovebelow[i][2][1]
-        HItaxrev += (NewPayrollTaxList[3] - CurrentPayrollTaxList[3]) * abovethresholdpct * HItotrev
+            abovethresholdpct += abovebelow[status][1][1] * abovebelow[status][2][1]
+        AddtlHIrev += (NewPayrollTaxList[3] - CurrentPayrollTaxList[3]) * abovethresholdpct * HItotrev
                 
     PayrollTaxRev = []
     for j in range(Years):               
-        PayrollTaxRev.append([OASDItaxrev,HItaxrev])
+        PayrollTaxRev.append([OASDItaxrev,BaseHIrev,AddtlHIrev])
         
         #update from start to end, using inflation and population growth
         OASDItaxrev = OASDItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-        HItaxrev = HItaxrev * (1 + PopulationGrowth) * (1 + Inflation)
-        HItotrev = HItotrev * (1 + PopulationGrowth) * (1 + Inflation)
+        BaseHIrev = BaseHIrev * (1 + PopulationGrowth) * (1 + Inflation)
+        AddtlHIrev = AddtlHIrev * (1 + PopulationGrowth) * (1 + Inflation) 
     
     PayrollTaxRev = numpy.array(PayrollTaxRev)
     
     return PayrollTaxRev
 
+
 """
+******************************************************************************
+HELPER FUNCTIONS
+******************************************************************************
+"""
+
+"""
+******************************************************************************
+2019 Payroll Tax Info: [OASDI rate, OASDI cap, HI rate, addt'l HI rate, threshold dictionary]
+******************************************************************************
+"""
+PayrollTaxin19 = [0.124,132900, 0.029,0.009,
+                  {'Single': 200000,
+                   'Married filed jointly + Surviving Spouses':250000,
+                   'Married filed separately': 125000,
+                   'HoH':200000}]
+
+"""
+******************************************************************************
+CREATEPAYROLLTAXDICT()
+
+Function: create a dictionary of payroll tax data
+
+Inputs: PayrollFile, a csv file
+
+Output: dictionary, format below
+{year:
+    cap,
+    OASDItax rate,
+    OASDI collected
+    HI tax rate,
+    addt'l HI tax rate,
+    Upper HI Threshold (Indiv),
+    Upper HI Threshold (Married Joint),
+    Upper HI Threshold (Married Separate),
+    HI collected}
+******************************************************************************
+"""
+def CreatePayrollTaxDict(PayrollFile):
+    with open(PayrollFile) as f:
+        PayrollTaxList = list(list(yr) for yr in csv.reader(f, delimiter=','))
+        f.close()
+    DictPayrollTax = {}
+    for yr in PayrollTaxList[1:]:
+        for r in range(1,12):
+            if '0.' in yr[r]:
+                yr[r] = int(yr[r].replace('0.',''))/10000
+                #convert rates to percents
+            else:
+                yr[r] = int(yr[r])
+        DictPayrollTax[str(yr[0])] = [yr[1],yr[2],yr[10],yr[3],yr[7],
+                       yr[4],yr[5],yr[6],yr[11]]
+    return DictPayrollTax
+
+"""
+******************************************************************************
+NEWPAYROLLLIST()
+
+Function: create new payroll list, preserving current OASDI rate
+
+Inputs:
+    oldpayrolllist, a list
+    newHIrates, a list (new HI and addtl HI rate)
+    
+Output: list, updated for new HI rates
+[OASDI rate, OASDI cap, HI rate, addt'l HI rate, threshold dictionary]
+******************************************************************************  
+"""
+def newpayrolllist(oldpayrolllist,newHIrates):
+    newlist = copy.deepcopy(oldpayrolllist)
+    newlist[2] = newHIrates[0]
+    newlist[3] = newHIrates[1]
+    return newlist
+
+"""
+******************************************************************************
+STATUSDISTRIBUTION()
+
+Function: Calculating % of income in diff filing statuses, to be used to 
+project Payroll Tax revenue changes
+
+Inputs:
+    incomedistribution, a list of lists
+    FilingStatus, a dictionary
+    
+Output: dictionary, format below
+{Filing Status:
+    [revenue from status,
+    % of total revenue from status]}
+******************************************************************************
+"""
+def statusdistribution(incomedistribution,FilingStatus):
+    #initiate a dictionary which will resemble {Status: rev from status}, and
+    #initiate a rev from each status of 0
+    statusdistro = {}
+    totrev = 0
+    for status in FilingStatus:
+        statusdistro[status] = 0
+        
+    for line in incomedistribution:
+        if line[0] in FilingStatus: 
+            #weed out the "Total" etc lines, to avoid duplication
+            status = str(line[0])
+            statusdistro[status] = statusdistro[status] + line[4]
+            totrev += line[4]
+            #add total AGI from this line to the current rev from status
+    for st in statusdistro:
+        statusdistro[st] = [statusdistro[st],statusdistro[st]/totrev]
+        #when complete, switch dictionary to resemble {Status: [rev from status,
+        #% of total rev from status]}
+    return statusdistro  
+
+"""
+******************************************************************************
+RAISEPAYROLLTAXES()
+
 Function: raising Payroll Tax rates
 
 Inputs:
@@ -283,8 +280,8 @@ Inputs:
 
 Output: a new payroll tax list, format below
 [OASDI rate, OASDI cap, HI rate, addt'l HI rate, threshold dictionary]
+******************************************************************************
 """
-
 def raisepayrolltaxes(CurrentPayrollList,incrementHI,incrementaddtl):
     newHIrates = [round(CurrentPayrollList[2] + incrementHI,4),
                   round(CurrentPayrollList[3] + incrementaddtl,4)]
@@ -292,6 +289,9 @@ def raisepayrolltaxes(CurrentPayrollList,incrementHI,incrementaddtl):
     return NewPayrollTaxList
 
 """
+******************************************************************************
+EFFECTIVEPAYROLLTAX()
+
 Function: determine effective payroll tax rate in a given year for a person
 with a given AGI and status
 
@@ -303,8 +303,8 @@ Inputs:
     Inflation, a float
 
 Output: effective tax rate, a float
+******************************************************************************
 """
-
 def effectivepayrolltax(Year,Income,Status,PayrollTaxList,Inflation):
     
     PayrollTaxesPaid = 0
