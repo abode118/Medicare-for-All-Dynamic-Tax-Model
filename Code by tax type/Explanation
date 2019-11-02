@@ -1,1 +1,8 @@
 """"""
+There are three major U.S. federal taxes: Income Tax, Payroll Tax, Corporate Tax
+
+This code projects the revenue generated from these taxes, both with and without rate changes
+
+See project overview for a more detailed explanation of the assumptions made
+
+"""
