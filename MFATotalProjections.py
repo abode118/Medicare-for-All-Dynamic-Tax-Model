@@ -393,11 +393,6 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
         
     return [incometaxchange[0],HItaxchange[1][0],addtlHItaxchange[1][1],corptaxchange[2],covered]
 
-raiseallforagivenincome(i.BracketDict2019,m.CurrentCorpTaxRate,p.PayrollTaxin19,
-                        2020,10,m.Inflation,m.PopulationGrowth,m.GDPGrowth,
-                        7,0.001,0.25,30000000000000,0,0.48,0.05,0.05,0.35,
-                        75000,'Single')
-
 """
 *******************************************************************************
 PLUGANDPLAY()
@@ -454,7 +449,7 @@ def plugandplay(OldBracketDict = i.BracketDict2019,OldCorpTaxRate = m.CurrentCor
         temp.append(round(float(currentnum)/100,4))
         if len(temp) == 2:
             break
-        temp[0] = temp[0] * 2
+    temp[0] = temp[0] * 2
     NewPayrollTaxList = p.newpayrolllist(OldPayrollTaxList,temp)
     
     print("\n" + "***************************" + "\n" + "CurrentCorporate Tax Rate is " + str(OldCorpTaxRate * 100))
@@ -514,7 +509,7 @@ def plugandplay(OldBracketDict = i.BracketDict2019,OldCorpTaxRate = m.CurrentCor
     
     return covered[3]
     
-#print(plugandplay())
+print(plugandplay())
 
 
 
