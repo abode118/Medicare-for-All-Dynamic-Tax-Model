@@ -1,1 +1,14 @@
 """
+SAVE THESE FILES IN THE SAME FOLDER AS THE PY FILES
+
+  Brackets = Individual Income Tax Brackets (2017 and 2019; Tax Cuts and Jobs Act passed Dec 2017;
+                                             first affected 2018 income taxes (filed in 2019))
+                                             
+  IncomeTaxes = IRS files containing info about income tax revenue collected by filing status and income group
+                As of time of writing, most recent data 2016 (filed in 2017)
+            
+  FederalRevenue = White House files containing historical (thru 2018) and projected Federal Tax Revenue, by category
+  
+  PayrollTaxes = Tax Policy Center file containing historical (thru 2018) and projected Payroll Tax Revenue
+  
+"""
