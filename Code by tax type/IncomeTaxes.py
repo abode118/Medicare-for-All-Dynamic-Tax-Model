@@ -277,7 +277,6 @@ Inputs:
 Output: newbrlist, a list of new brackets
 ******************************************************************************
 """
-
 def raiseincometaxbrackets(BracketDict,ratio,increment):    
     
     BracketList = []
@@ -291,9 +290,10 @@ def raiseincometaxbrackets(BracketDict,ratio,increment):
             BracketList[b] =  round(BracketList[b] + increment,4)
             #if your ratio is 1 (i.e. flat tax increase), add increment to each
         elif ratio > 1:
-            addition = ((ratio * increment) / len(BracketList)) * (b + 1)
+            BracketList[b] = round(BracketList[b] + increment,4)
+            addition = ((ratio * increment) - increment) / (len(BracketList)-1) * (b)
             BracketList[b] =  round(BracketList[b] + addition,4)
-            #if your ration >1 (i.e. progressive tax increase), add increment
+            #if your ratio >1 (i.e. progressive tax increase), add increment
             #to lowest rate, then scale up to comply w/ ratio across brackets
     return BracketList
 
