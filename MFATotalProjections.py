@@ -8,11 +8,297 @@ import numpy
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+import matplotlib.ticker as ticker
 
 import MFAvariables as m
 import IncomeTaxes as i
 import PayrollTaxes as p
 import CorporateTaxes as c
+
+"""
+*******************************************************************************
+HELPER FUNCTIONS (projection functions beginning ~line 300)
+*******************************************************************************
+"""
+
+"""
+*******************************************************************************
+MARGINALTAXINCREASE()
+
+Function: Determine marginal tax increases for a given status/income and increment
+(i.e. payroll taxes have lower marginal impact on high earners due to caps)
+
+Inputs:    
+    OldBracketDict, a dictionary
+    OldPayrollTaxList, a list
+    ratio, an int
+    increment, a float
+    Year, an int
+    Income, an int
+    Status, a string
+    Inflation, a float
+    
+Output: list of lists
+    [[Income Tax, Incremental change in effective tax rate],
+    [HI Tax, Incremental change in effective tax rate],
+    [Addt'l HI Tax, Incremental change in effective tax rate]
+    [Corp Tax, 0]]
+*******************************************************************************
+"""
+def marginaltaxincrease(OldBracketDict,OldPayrollTaxList,
+                        ratio,increment,Year,Income,Status,Inflation):
+    
+    newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
+    newbracketdict = i.newbracketdict(OldBracketDict,newincomebrlist)
+    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment*2,0)
+    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment*2)
+    #calculate total effective tax rate given no changes
+    nochange = totaleffectivetaxrate(OldBracketDict,OldPayrollTaxList,Year,Income,
+                                     Status,Inflation)
+
+    #calculate total effective tax rate given incremental change in income tax
+    incometaxchangerate = totaleffectivetaxrate(newbracketdict,OldPayrollTaxList,
+                                                Year,Income,Status,Inflation)
+    
+    #calculate total effective tax rate given incremental change in HI payroll tax
+    HItaxchangerate = totaleffectivetaxrate(OldBracketDict,newHIpayrolltaxlist,Year,
+                                            Income,Status,Inflation)
+    
+    #calculate total effective tax rate fiven incremental change in addt'l payroll tax
+    addtlHItaxchangerate = totaleffectivetaxrate(OldBracketDict,newaddtlHIpayrolltaxlist,
+                                                 Year,Income,Status,Inflation)
+    
+    #return list of lists, 
+    return [['IncomeTax',round(incometaxchangerate - nochange,4)],
+             ['HITax',round(HItaxchangerate - nochange,4)],
+            ['AddtlHITax',round(addtlHItaxchangerate - nochange,4)],
+            ['CorpTax',0]]
+
+"""
+*******************************************************************************
+MARGINALREVENUEGAIN()
+
+Function: Determine marginal gain in tax revenue for a given increment
+
+Inputs:
+        OldBracketDict, a dictionary
+        OldCorpTaxRate, a float
+        OldPayrollTaxList, a list
+        StartYear, an int
+        Years, an int
+        Inflation, a float
+        PopulationGrowth, a float
+        GDPGrowth, a float
+        ratio, an int
+        increment, a float        
+    
+Output: list of lists
+    [[Income Tax, Marginal change in tax revenue],
+    [HI Tax, Marginal change in tax revenue],
+    [Addt'l HI Tax, Marginal change in tax revenue]
+    [Corp Tax, Marginal change in tax revenue]]
+*******************************************************************************
+"""
+def marginalrevenuegain(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
+                        StartYear,Years,Inflation,PopulationGrowth,
+                        GDPGrowth,ratio,increment):
+    
+    #generate new tax rates by raising each by increment
+    newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
+    NewBracketDict = i.newbracketdict(OldBracketDict,newincomebrlist)
+    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment,0)
+    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment)
+    NewCorpTaxRate = c.RaiseCorporateTax(OldCorpTaxRate,increment)
+    
+    #project tax revenue given one increment of change in each tax rate type    
+    incometaxrevchange = compareprojections(OldBracketDict,NewBracketDict,
+                                            OldCorpTaxRate,OldCorpTaxRate,
+                                            OldPayrollTaxList,OldPayrollTaxList,
+                                            StartYear,Years,Inflation,
+                                            PopulationGrowth,GDPGrowth)
+
+    HItaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
+                                        OldCorpTaxRate,OldCorpTaxRate,
+                                        OldPayrollTaxList,newHIpayrolltaxlist,
+                                        StartYear,Years,Inflation,
+                                        PopulationGrowth,GDPGrowth)
+
+    addtlHItaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
+                                             OldCorpTaxRate,OldCorpTaxRate,
+                                             OldPayrollTaxList,newaddtlHIpayrolltaxlist,
+                                            StartYear,Years,Inflation,
+                                            PopulationGrowth,GDPGrowth)
+
+    corptaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
+                                          OldCorpTaxRate,NewCorpTaxRate,
+                                          OldPayrollTaxList,OldPayrollTaxList,
+                                          StartYear,Years,Inflation,
+                                          PopulationGrowth,GDPGrowth)
+    
+    return [['IncomeTax',incometaxrevchange[3]],['HITax',HItaxrevchange[3]],
+            ['AddtlHITax',addtlHItaxrevchange[3]],['CorpTax',corptaxrevchange[3]]]
+
+"""
+*******************************************************************************
+TOTALEFFECTIVETAXRATE()
+
+Function: Determine total effective tax rate
+
+Inputs:
+    BracketDict, a dictionary
+    PayrollTaxList, a list
+    Year, an int
+    Status, a String
+    Inflation, a float
+    
+    Defaults:
+        StandardDeduction, a dictionary
+
+Output:
+    total effective tax rate, a float
+*******************************************************************************
+"""
+def totaleffectivetaxrate(BracketDict,PayrollTaxList,Year,Income,Status,Inflation,
+                          StandardDeduction = m.StandardDeduction):
+    incomet = i.effectiveincometax(Year,Income,Status,BracketDict,StandardDeduction,
+                       Inflation)
+    payrollt = p.effectivepayrolltax(Year,Income,Status,PayrollTaxList,Inflation)
+    return incomet + payrollt
+
+"""
+*******************************************************************************
+EFFECTIVERATECHANGESALL
+
+Function: determining effective tax rate change for a person with a given AGI
+
+Inputs:
+    Year, an int
+    OldBracketDict, a dictionary
+    NewBracketDict, a dictionary
+    Inflation, a float
+    OldPayrollTaxList, a list
+    NewPayrollTaxList, a list
+    StandardDeduction, a dictionary (preset)
+    FilingStatus, a list (preset)
+    
+Output: chart displaying effective change across 25k increments
+
+Column 1 = Income
+Column 2 = Filing Status
+Column 3 = Effective Tax Rate
+Column 4 = Rate or Change in Rate (Category)
+*******************************************************************************
+"""
+def effectiveratechangesall(Year,OldBracketDict,NewBracketDict,
+                            Inflation,OldPayrollTaxList,NewPayrollTaxList,
+                            StandardDeduction = m.StandardDeduction,
+                            FilingStatus = m.FilingStatus):
+    
+    for st in FilingStatus:
+        result = []
+        for income in range(0,525000,25000):
+            originalincome = i.effectiveincometax(Year,income,st,OldBracketDict,
+                                                StandardDeduction,Inflation)
+            newincome = i.effectiveincometax(Year,income,st,NewBracketDict,
+                                           StandardDeduction,Inflation)
+            originalpayroll = p.effectivepayrolltax(Year,income,st,OldPayrollTaxList,
+                                                  Inflation)
+            newpayroll = p.effectivepayrolltax(Year,income,st,NewPayrollTaxList,
+                                             Inflation)
+            originaltotal = originalincome + originalpayroll
+            newtotal = newincome + newpayroll
+            
+            result.append([int(income/1000),newtotal,"Effective Tax Rate"])
+            result.append([int(income/1000),newtotal-originaltotal,"Effective Rate Change"])
+        chartdata = pd.DataFrame(result,columns = ['Income',
+                                                   'Rate',
+                                                   'Effective Rate Cat'])
+    
+        plt.figure(figsize = (11,8.5))
+        sns.set_palette("YlGnBu",4)
+        fig = sns.barplot(x="Income",y="Rate",hue="Effective Rate Cat",data=chartdata,ci=None)
+        fig.yaxis.set_major_locator(ticker.MultipleLocator(0.05))
+        plt.ylim(0,0.55)
+        yticklabels = ['{:.2%}'.format(y) for y in fig.get_yticks()]
+        fig.set_yticklabels(yticklabels)
+        fig.set(title = "New Effective Tax Rate and Change - " + str(st),
+                xlabel = "Income (in thousands)",
+                ylabel= "Effective Tax Rate")
+        
+    return None
+
+"""
+*******************************************************************************
+VISUALIZATIONS
+
+Chart 1: line chart depicting cumulative taxes raised with and without changes
+Chart 2: line chart depicting cumulative change in taxes vs. desired coverage
+Chart 3: bar chart depicting cumulative taxes raised in each cat with/without
+         changes, and the difference
+*******************************************************************************
+"""
+def taxrevlinechart(NoChangeArray,ChangeArray,StartYear,Years):
+    
+    ForGraph = []
+    changesofar = 0
+    nochangesofar = 0
+    for yr in range(Years):
+        nochangesofar += numpy.sum(NoChangeArray[yr])
+        changesofar += numpy.sum(ChangeArray[yr])
+        ForGraph.append([StartYear + yr, changesofar, "Tax Revenue Projections with Changes"])
+        ForGraph.append([StartYear + yr, nochangesofar, "Current Tax Revenue Projections"])
+    plt.figure(figsize = (11,8.5))
+    TaxRevLineGraph = pd.DataFrame(ForGraph,columns = ['Year','Tax Revenue','Projection'])
+    sns.set_palette("YlGnBu",2)
+    fig = sns.lineplot(x="Year",y="Tax Revenue",hue="Projection",data=TaxRevLineGraph)
+    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig.get_yticks()/1000000000000]
+    fig.set_yticklabels(yticklabels)
+    fig.set(title = "Tax Revenue Collected With and Without Changes",
+             xlabel = "Year",
+             ylabel="Tax Revenue (in Trillions of Dollars)")
+    
+    return None
+
+def newtaxrev(DiffArray,StartYear,Years,DesiredCoverage,TotalCost):
+    
+    ForGraph = []
+    diffsofar = 0
+    for yr in range(Years):
+        diffsofar += numpy.sum(DiffArray[yr])
+        ForGraph.append([StartYear + yr, DesiredCoverage * TotalCost,"Desired Coverage"])
+        ForGraph.append([StartYear + yr, diffsofar, "Difference in Tax Revenue"])
+    plt.figure(figsize = (11,8.5))
+    TaxRevLineGraph = pd.DataFrame(ForGraph,columns = ['Year','Tax Revenue','Projection'])
+    sns.set_palette("RdBu",2)
+    fig = sns.lineplot(x="Year",y="Tax Revenue",hue="Projection",data=TaxRevLineGraph)
+    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig.get_yticks()/1000000000000]
+    fig.set_yticklabels(yticklabels)
+    fig.set(title = "Change in Tax Revenue vs. Desired Coverage",
+             xlabel = "Year",
+             ylabel="Tax Revenue (in Trillions of Dollars)")
+    
+    return None
+        
+def taxbarchart(barcharttotals):
+    
+    ForGraph2 = []
+    revtypes = {"Income":4,"OASDI":0, "HI":1, "Addtl HI":2, "Corporate":3}
+    projectdict = {"Current Tax Revenue Projections":0,"Tax Revenue Projections with Changes":1,
+                   "Difference in TaxRevenue":2}
+    for pr in projectdict.keys():
+        for r in revtypes.keys():
+            ForGraph2.append([barcharttotals[projectdict[pr]][revtypes[r]],r,pr])
+    plt.figure(figsize = (11,8.5))
+    TaxCatBarChart = pd.DataFrame(ForGraph2,columns = ['Revenue','Category','Projection'])
+    sns.set_palette("YlGnBu",4)
+    fig2 = sns.barplot(x="Category",y="Revenue",hue="Projection",data=TaxCatBarChart)
+    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig2.get_yticks()/1000000000000]
+    fig2.set_yticklabels(yticklabels)
+    fig2.set(title = "Tax Revenue by Category",
+             xlabel = "Tax Category",
+             ylabel="Tax Revenue (in Trillions of Dollars)")
+    
+    return None
 
 """
 *******************************************************************************
@@ -82,10 +368,6 @@ def projecttaxrevenue(BracketDict,OldCorpTaxRate,NewCorpTaxRate,
         TaxRev.append([PayrollTaxRev[yr][0],PayrollTaxRev[yr][1],PayrollTaxRev[yr][2],
                        CorpTaxRev[yr],IncomeTaxRev[yr]])        
     return numpy.array(TaxRev)
-
-#print(projecttaxrevenue(i.BracketDict2019,m.CurrentCorpTaxRate,m.CurrentCorpTaxRate,
-#                        p.PayrollTaxin19,p.PayrollTaxin19,2020,10,
-#                        m.Inflation,m.PopulationGrowth,m.GDPGrowth))
 
 """
 *******************************************************************************
@@ -224,7 +506,7 @@ def raiseallwconstraint(OldBracketDict,ratio,OldCorpTaxRate,OldPayrollTaxList,
         NoChange = 0
         
         #if current max tax bracket + increment is less than constraint, raise rates
-        if round(max(newbracketlist) + (incrementI * ratio),4) > maxIncomeTax or incrementI == 0:        
+        if round(max(newbracketlist) + (incrementI * ratio),4) > maxIncomeTax or incrementI == 0:
             NoChange += 1
         else:
             newbracketlist = i.raiseincometaxbrackets(NewBracketDict,ratio,incrementI)
@@ -333,7 +615,8 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
     margrate.sort(key = lambda x: x[1])
     for t in margrate:
         if t[0] == 'IncomeTax':
-                
+            if covered >= DesiredCoverage * TotalCost:
+                increment = 0
             incometaxchange = raiseallwconstraint(OldBracketDict,ratio,OldCorpTaxRate,
                                                   OldPayrollTaxList,StartYear,Years,Inflation,
                                                   PopulationGrowth,GDPGrowth,
@@ -344,6 +627,8 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
             covered += incometaxchange[3]
             
         elif t[0] == 'CorpTax':
+            if covered >= DesiredCoverage * TotalCost:
+                increment = 0
             corptaxchange = raiseallwconstraint(OldBracketDict,ratio,OldCorpTaxRate,
                                                 OldPayrollTaxList,StartYear,Years,Inflation,
                                                 PopulationGrowth,GDPGrowth,
@@ -354,6 +639,8 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
             covered += corptaxchange[3]
             
         elif t[0] == 'HITax':
+            if covered >= DesiredCoverage * TotalCost:
+                increment = 0
             HItaxchange = raiseallwconstraint(OldBracketDict,ratio,OldCorpTaxRate,
                                               OldPayrollTaxList,StartYear,Years,Inflation,
                                               PopulationGrowth,GDPGrowth,
@@ -364,6 +651,8 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
             covered += HItaxchange[3]
             
         elif t[0] == 'AddtlHITax':
+            if covered >= DesiredCoverage * TotalCost:
+                increment = 0
             addtlHItaxchange = raiseallwconstraint(OldBracketDict,ratio,OldCorpTaxRate,
                                                    OldPayrollTaxList,StartYear,Years,Inflation,
                                                    PopulationGrowth,GDPGrowth,
@@ -393,6 +682,9 @@ def raiseallforagivenincome(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
         
     return [incometaxchange[0],HItaxchange[1][0],addtlHItaxchange[1][1],corptaxchange[2],covered]
 
+#raiseallforagivenincome(i.BracketDict2019,m.CurrentCorpTaxRate,p.PayrollTaxin19,
+#                        2021,10,0.02,0.01,0.02,2,0.001,0.50,30000000000000,
+#                        0,0.55,0.05,0.05,0.30,100000,"Married filed jointly + Surviving Spouses")
 """
 *******************************************************************************
 PLUGANDPLAY()
@@ -509,307 +801,4 @@ def plugandplay(OldBracketDict = i.BracketDict2019,OldCorpTaxRate = m.CurrentCor
     
     return covered[3]
     
-print(plugandplay())
-
-
-
-
-"""
-*******************************************************************************
-HELPER FUNCTIONS
-*******************************************************************************
-"""
-
-
-
-
-"""
-*******************************************************************************
-MARGINALTAXINCREASE()
-
-Function: Determine marginal tax increases for a given status/income and increment
-(i.e. payroll taxes have lower marginal impact on high earners due to caps)
-
-Inputs:    
-    OldBracketDict, a dictionary
-    OldPayrollTaxList, a list
-    ratio, an int
-    increment, a float
-    Year, an int
-    Income, an int
-    Status, a string
-    Inflation, a float
-    
-Output: list of lists
-    [[Income Tax, Incremental change in effective tax rate],
-    [HI Tax, Incremental change in effective tax rate],
-    [Addt'l HI Tax, Incremental change in effective tax rate]
-    [Corp Tax, 0]]
-*******************************************************************************
-"""
-def marginaltaxincrease(OldBracketDict,OldPayrollTaxList,
-                        ratio,increment,Year,Income,Status,Inflation):
-    
-    newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
-    newbracketdict = i.newbracketdict(OldBracketDict,newincomebrlist)
-    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment*2,0)
-    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment*2)
-    
-    #calculate total effective tax rate given no changes
-    nochange = totaleffectivetaxrate(OldBracketDict,OldPayrollTaxList,Year,Income,
-                                     Status,Inflation)
-
-    #calculate total effective tax rate given incremental change in income tax
-    incometaxchangerate = totaleffectivetaxrate(newbracketdict,OldPayrollTaxList,
-                                                Year,Income,Status,Inflation)
-    
-    #calculate total effective tax rate given incremental change in HI payroll tax
-    HItaxchangerate = totaleffectivetaxrate(OldBracketDict,newHIpayrolltaxlist,Year,
-                                            Income,Status,Inflation)
-    
-    #calculate total effective tax rate fiven incremental change in addt'l payroll tax
-    addtlHItaxchangerate = totaleffectivetaxrate(OldBracketDict,newaddtlHIpayrolltaxlist,
-                                                 Year,Income,Status,Inflation)
-    
-    #return list of lists, 
-    return [['IncomeTax',round(incometaxchangerate - nochange,4)],
-             ['HITax',round(HItaxchangerate - nochange,4)],
-            ['AddtlHITax',round(addtlHItaxchangerate - nochange,4)],
-            ['CorpTax',0]]
-
-#print(marginaltaxincrease(i.BracketDict2019,p.PayrollTaxin19,5,0.01,2029,75000,
-#                          'Single',m.Inflation))
-
-"""
-*******************************************************************************
-MARGINALREVENUEGAIN()
-
-Function: Determine marginal gain in tax revenue for a given increment
-
-Inputs:
-        OldBracketDict, a dictionary
-        OldCorpTaxRate, a float
-        OldPayrollTaxList, a list
-        StartYear, an int
-        Years, an int
-        Inflation, a float
-        PopulationGrowth, a float
-        GDPGrowth, a float
-        ratio, an int
-        increment, a float        
-    
-Output: list of lists
-    [[Income Tax, Marginal change in tax revenue],
-    [HI Tax, Marginal change in tax revenue],
-    [Addt'l HI Tax, Marginal change in tax revenue]
-    [Corp Tax, Marginal change in tax revenue]]
-*******************************************************************************
-"""
-def marginalrevenuegain(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
-                        StartYear,Years,Inflation,PopulationGrowth,
-                        GDPGrowth,ratio,increment):
-    
-    #generate new tax rates by raising each by increment
-    newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
-    NewBracketDict = i.newbracketdict(OldBracketDict,newincomebrlist)
-    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment,0)
-    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment)
-    NewCorpTaxRate = c.RaiseCorporateTax(OldCorpTaxRate,increment)
-    
-    #project tax revenue given one increment of change in each tax rate type    
-    incometaxrevchange = compareprojections(OldBracketDict,NewBracketDict,
-                                            OldCorpTaxRate,OldCorpTaxRate,
-                                            OldPayrollTaxList,OldPayrollTaxList,
-                                            StartYear,Years,Inflation,
-                                            PopulationGrowth,GDPGrowth)
-
-    HItaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
-                                        OldCorpTaxRate,OldCorpTaxRate,
-                                        OldPayrollTaxList,newHIpayrolltaxlist,
-                                        StartYear,Years,Inflation,
-                                        PopulationGrowth,GDPGrowth)
-
-    addtlHItaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
-                                             OldCorpTaxRate,OldCorpTaxRate,
-                                             OldPayrollTaxList,newaddtlHIpayrolltaxlist,
-                                            StartYear,Years,Inflation,
-                                            PopulationGrowth,GDPGrowth)
-
-    corptaxrevchange = compareprojections(OldBracketDict,OldBracketDict,
-                                          OldCorpTaxRate,NewCorpTaxRate,
-                                          OldPayrollTaxList,OldPayrollTaxList,
-                                          StartYear,Years,Inflation,
-                                          PopulationGrowth,GDPGrowth)
-    
-    return [['IncomeTax',incometaxrevchange[3]],['HITax',HItaxrevchange[3]],
-            ['AddtlHITax',addtlHItaxrevchange[3]],['CorpTax',corptaxrevchange[3]]]
-
-#print(marginalrevenuegain(i.BracketDict2019,m.CurrentCorpTaxRate,
-#                          p.PayrollTaxin19,2020,10,m.Inflation,m.PopulationGrowth,
-#                          m.GDPGrowth,5,0.001))
-"""
-*******************************************************************************
-TOTALEFFECTIVETAXRATE()
-
-Function: Determine total effective tax rate
-
-Inputs:
-    BracketDict, a dictionary
-    PayrollTaxList, a list
-    Year, an int
-    Status, a String
-    Inflation, a float
-    
-    Defaults:
-        StandardDeduction, a dictionary
-
-Output:
-    total effective tax rate, a float
-*******************************************************************************
-"""
-def totaleffectivetaxrate(BracketDict,PayrollTaxList,Year,Income,Status,Inflation,
-                          StandardDeduction = m.StandardDeduction):
-    incomet = i.effectiveincometax(Year,Income,Status,BracketDict,StandardDeduction,
-                       Inflation)
-    payrollt = p.effectivepayrolltax(Year,Income,Status,PayrollTaxList,Inflation)
-    return incomet + payrollt
-
-#print(totaleffectivetaxrate(i.BracketDict2019,p.PayrollTaxin19,2020,75000,'Single',m.Inflation,))
-
-"""
-*******************************************************************************
-EFFECTIVERATECHANGESALL
-
-Function: determining effective tax rate change for a person with a given AGI
-
-Inputs:
-    Year, an int
-    OldBracketDict, a dictionary
-    NewBracketDict, a dictionary
-    Inflation, a float
-    OldPayrollTaxList, a list
-    NewPayrollTaxList, a list
-    StandardDeduction, a dictionary (preset)
-    FilingStatus, a list (preset)
-    
-Output: chart displaying effective change across 25k increments
-
-Column 1 = Income
-Column 2 = Filing Status
-Column 3 = Effective Tax Rate
-Column 4 = Rate or Change in Rate (Category)
-*******************************************************************************
-"""
-def effectiveratechangesall(Year,OldBracketDict,NewBracketDict,
-                            Inflation,OldPayrollTaxList,NewPayrollTaxList,
-                            StandardDeduction = m.StandardDeduction,
-                            FilingStatus = m.FilingStatus):
-    
-    changelistoflists = []
-    for income in range(0,525000,25000):
-        for st in FilingStatus:
-            originalincome = i.effectiveincometax(Year,income,st,OldBracketDict,
-                                                StandardDeduction,Inflation)
-            newincome = i.effectiveincometax(Year,income,st,NewBracketDict,
-                                           StandardDeduction,Inflation)
-            originalpayroll = p.effectivepayrolltax(Year,income,st,OldPayrollTaxList,
-                                                  Inflation)
-            newpayroll = p.effectivepayrolltax(Year,income,st,NewPayrollTaxList,
-                                             Inflation)
-            originaltotal = originalincome + originalpayroll
-            newtotal = newincome + newpayroll
-            
-            changelistoflists.append([int(income/1000),st,newtotal,"Effective Tax Rate"])
-            changelistoflists.append([int(income/1000),st,newtotal-originaltotal,"Effective Rate Change"])
-    
-    changechart = pd.DataFrame(changelistoflists,columns = ['Income',
-                                                            'Filing Status',
-                                                            'Rate',
-                                                            'Effective Rate Cat'])
-    plt.figure(figsize = (11,8.5))
-    sns.set_palette("YlGnBu",4)
-    fig = sns.barplot(x="Income",y="Rate",hue="Effective Rate Cat",data=changechart,ci=None)
-    yticklabels = ['{:.2%}'.format(y) for y in fig.get_yticks()]
-    fig.set_yticklabels(yticklabels)
-    fig.set(title = "New Effective Tax Rate and Change",
-             xlabel = "Income (in thousands)",
-             ylabel= "Effective Tax Rate")
-        
-    return changechart
-
-#NewBracketDict = i.newbracketdict(i.BracketDict2019,[0.10,0.20,0.30,0.40,0.50,0.60,0.70])
-#print(effectiveratechangesall(2025,i.BracketDict2019,NewBracketDict,m.Inflation,
-#                              p.PayrollTaxin19,p.PayrollTaxin19,))
-
-"""
-*******************************************************************************
-VISUALIZATIONS
-
-Chart 1: line chart depicting cumulative taxes raised with and without changes
-Chart 2: line chart depicting cumulative change in taxes vs. desired coverage
-Chart 3: bar chart depicting cumulative taxes raised in each cat with/without
-         changes, and the difference
-*******************************************************************************
-"""
-def taxrevlinechart(NoChangeArray,ChangeArray,StartYear,Years):
-    
-    ForGraph = []
-    changesofar = 0
-    nochangesofar = 0
-    for yr in range(Years):
-        nochangesofar += numpy.sum(NoChangeArray[yr])
-        changesofar += numpy.sum(ChangeArray[yr])
-        ForGraph.append([StartYear + yr, changesofar, "Tax Revenue Projections with Changes"])
-        ForGraph.append([StartYear + yr, nochangesofar, "Current Tax Revenue Projections"])
-    plt.figure(figsize = (11,8.5))
-    TaxRevLineGraph = pd.DataFrame(ForGraph,columns = ['Year','Tax Revenue','Projection'])
-    sns.set_palette("YlGnBu",2)
-    fig = sns.lineplot(x="Year",y="Tax Revenue",hue="Projection",data=TaxRevLineGraph)
-    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig.get_yticks()/1000000000000]
-    fig.set_yticklabels(yticklabels)
-    fig.set(title = "Tax Revenue Collected With and Without Changes",
-             xlabel = "Year",
-             ylabel="Tax Revenue (in Trillions of Dollars)")
-    
-    return None
-
-def newtaxrev(DiffArray,StartYear,Years,DesiredCoverage,TotalCost):
-    
-    ForGraph = []
-    diffsofar = 0
-    for yr in range(Years):
-        diffsofar += numpy.sum(DiffArray[yr])
-        ForGraph.append([StartYear + yr, DesiredCoverage * TotalCost,"Desired Coverage"])
-        ForGraph.append([StartYear + yr, diffsofar, "Difference in Tax Revenue"])
-    plt.figure(figsize = (11,8.5))
-    TaxRevLineGraph = pd.DataFrame(ForGraph,columns = ['Year','Tax Revenue','Projection'])
-    sns.set_palette("RdBu",2)
-    fig = sns.lineplot(x="Year",y="Tax Revenue",hue="Projection",data=TaxRevLineGraph)
-    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig.get_yticks()/1000000000000]
-    fig.set_yticklabels(yticklabels)
-    fig.set(title = "Change in Tax Revenue vs. Desired Coverage",
-             xlabel = "Year",
-             ylabel="Tax Revenue (in Trillions of Dollars)")
-    
-    return None
-        
-def taxbarchart(barcharttotals):
-    
-    ForGraph2 = []
-    revtypes = {"Income":4,"OASDI":0, "HI":1, "Addtl HI":2, "Corporate":3}
-    projectdict = {"Current Tax Revenue Projections":0,"Tax Revenue Projections with Changes":1,
-                   "Difference in TaxRevenue":2}
-    for pr in projectdict.keys():
-        for r in revtypes.keys():
-            ForGraph2.append([barcharttotals[projectdict[pr]][revtypes[r]],r,pr])
-    plt.figure(figsize = (11,8.5))
-    TaxCatBarChart = pd.DataFrame(ForGraph2,columns = ['Revenue','Category','Projection'])
-    sns.set_palette("YlGnBu",4)
-    fig2 = sns.barplot(x="Category",y="Revenue",hue="Projection",data=TaxCatBarChart)
-    yticklabels = ['{:,.2f}'.format(y) + 'T' for y in fig2.get_yticks()/1000000000000]
-    fig2.set_yticklabels(yticklabels)
-    fig2.set(title = "Tax Revenue by Category",
-             xlabel = "Tax Category",
-             ylabel="Tax Revenue (in Trillions of Dollars)")
-    
-    return None
+#plugandplay()
