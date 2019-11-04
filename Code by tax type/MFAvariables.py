@@ -148,14 +148,19 @@ def find_averages(startavg,low,high,personperdoll,threshold):
     #calculate number of people in each side of threshold
     lowdenom = (threshold - low) * personperdoll
     highdenom = (high - threshold) * personperdoll
-
-    #set the new low average to midpoint between the threshold and the low
-    newlowavg = (threshold + low)/2
     
-    #calculate what the new high avg is, given the new low avg, num of ppl on
-    #either side, and starting avg
-    newhighavg = ((startavg * (high - low) * personperdoll) - (lowdenom * newlowavg)) \
-                /highdenom
+    divisor = 2
+    newlowavg = 0
+    newhighavg = 0
+    while newhighavg < threshold:
+        #set the new low average to midpoint between the threshold and the low
+        newlowavg = (threshold + low)/divisor
+    
+        #calculate what the new high avg is, given the new low avg, num of ppl on
+        #either side, and starting avg
+        newhighavg = ((startavg * (high - low) * personperdoll) - (lowdenom * newlowavg)) \
+                    /highdenom
+        divisor += 0.1
     return [[newlowavg,lowdenom], [newhighavg,highdenom]]
 
 """
