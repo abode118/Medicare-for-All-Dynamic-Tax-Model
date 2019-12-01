@@ -106,7 +106,7 @@ def marginalrevenuegain(OldBracketDict,OldCorpTaxRate,OldPayrollTaxList,
     #generate new tax rates by raising each by increment
     newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
     NewBracketDict = i.newbracketdict(OldBracketDict,newincomebrlist)
-    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment,0)
+    newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment*2,0)
     newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment)
     NewCorpTaxRate = c.RaiseCorporateTax(OldCorpTaxRate,increment)
     
