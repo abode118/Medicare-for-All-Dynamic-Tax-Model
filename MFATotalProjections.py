@@ -51,7 +51,7 @@ def marginaltaxincrease(OldBracketDict,OldPayrollTaxList,
     newincomebrlist = i.raiseincometaxbrackets(OldBracketDict,ratio,increment)
     newbracketdict = i.newbracketdict(OldBracketDict,newincomebrlist)
     newHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,increment*2,0)
-    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment*2)
+    newaddtlHIpayrolltaxlist = p.raisepayrolltaxes(OldPayrollTaxList,0,increment)
     #calculate total effective tax rate given no changes
     nochange = totaleffectivetaxrate(OldBracketDict,OldPayrollTaxList,Year,Income,
                                      Status,Inflation)
